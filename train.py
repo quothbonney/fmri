@@ -2,6 +2,7 @@ import torch
 import torch.utils.data
 import torch.optim as optim
 import torch.nn as nn
+from torch.utils.tensorboard import SummaryWriter
 
 import model
 import data_setup
@@ -15,7 +16,7 @@ def train_step(model: torch.nn.Module,
                optimizer: torch.optim.Optimizer,
                device):
     model.train()
-    steps = 1
+    steps = 2000
     losses_g = []
     for st in range(steps):
         ixs = torch.randint(3, len(dataset), (batch_sz,), device=device)
@@ -40,12 +41,25 @@ def train_step(model: torch.nn.Module,
 
         sol = torch.stack([scan[target_positions[i]] for i, scan in enumerate(data)])
 
-        loss = loss_fn(out, sol.view(-1, 64*64))
+        loss = loss_fn(out, sol.view(-1, 64*64).double())
+        writer.add_scalar('Loss/train', loss.item(), st)
         optimizer.zero_grad()
+
+        loss.backward()
+        optimizer.step()
+
         losses_g.append(loss.item())
         if st % 5 == 0:
           print(f"Step [{st+1}], Loss: {sum(losses_g)/len(losses_g)}")
           losses_g = []
+
+        if st % 50 == 0:
+            img_to_display = out[0].reshape(1, 64, 64)  # Get the first image in the batch
+
+# Normalize the image to [0, 1] if it's not already
+            img_to_display = (img_to_display - img_to_display.min()) / (img_to_display.max() - img_to_display.min())
+
+            writer.add_image('Generated Image', img_to_display, st)
 
 
 if __name__ == "__main__":
@@ -53,10 +67,12 @@ if __name__ == "__main__":
     context_len = 4
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model = model.Model(conf).to(device)
-    dataset = data_setup.create_dataset(1, device)
+    dataset = data_setup.create_dataset(2, device)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     criterion = nn.MSELoss()
 
+    writer = SummaryWriter('runs/jasanoff2')
     train_step(model, dataset, batch_sz=5, context_len=4, loss_fn=criterion, optimizer=optimizer, device=device)
+    writer.close()
 
 

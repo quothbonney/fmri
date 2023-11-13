@@ -49,7 +49,6 @@ class ArrayDataset(Dataset):
     def __getitem__(self, index):
         scan = self.array[index]
         transformed_scan = self.transform(scan.float())
-        print(transformed_scan.shape)
         return transformed_scan
 
 
