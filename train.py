@@ -3,6 +3,10 @@ import torch.utils.data
 import torch.optim as optim
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
+from torchvision.utils import make_grid
+import torch.nn.functional as F
+
+from torch.optim.lr_scheduler import StepLR
 
 import model
 import data_setup
@@ -16,7 +20,7 @@ def train_step(model: torch.nn.Module,
                optimizer: torch.optim.Optimizer,
                device):
     model.train()
-    steps = 2000
+    steps = 200
     losses_g = []
     for st in range(steps):
         ixs = torch.randint(3, len(dataset), (batch_sz,), device=device)
@@ -54,25 +58,33 @@ def train_step(model: torch.nn.Module,
           losses_g = []
 
         if st % 50 == 0:
-            img_to_display = out[0].reshape(1, 64, 64)  # Get the first image in the batch
+            # tns_image = utils.plot_image_and_context(targets_ix.detach().cpu(), context_ix.detach().cpu(), out.detach().cpu(), sol.detach().cpu(), context.detach().cpu())
 
-# Normalize the image to [0, 1] if it's not already
-            img_to_display = (img_to_display - img_to_display.min()) / (img_to_display.max() - img_to_display.min())
+            # Makes the image grid with torchvision and pushes it to TensorBoard (very pretty)
+            images_grid = out[:25].reshape(25, 1, 64, 64)  # Get the first image in the batch
+            resized_images = F.interpolate(images_grid, size=(256, 256), mode='nearest')
 
-            writer.add_image('Generated Image', img_to_display, st)
+            grid = make_grid(resized_images, nrow=5, normalize=True)
+
+            writer.add_image('Generated Image', grid, st)
 
 
 if __name__ == "__main__":
     conf = model.Configs()
     context_len = 4
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = 'cpu' if torch.cuda.is_available() else 'cpu'
     model = model.Model(conf).to(device)
     dataset = data_setup.create_dataset(2, device)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     criterion = nn.MSELoss()
+    scheduler = StepLR(optimizer, step_size=30, gamma=0.1)
 
-    writer = SummaryWriter('runs/jasanoff2')
-    train_step(model, dataset, batch_sz=5, context_len=4, loss_fn=criterion, optimizer=optimizer, device=device)
+    writer = SummaryWriter('runs/jasanoff')
+    
+    for i in range (10):
+        train_step(model, dataset, batch_sz=80, context_len=4, loss_fn=criterion, optimizer=optimizer, device=device)
+        scheduler.step()
+
     writer.close()
 
 
